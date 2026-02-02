@@ -190,7 +190,7 @@
 				<div class='note-meta'><span title='${new Date(note.updated_at).toISOString()}'>${time}</span></div>
 			</div>
 			${isDoc ? `<h1 style="margin-top: 0; margin-bottom: 1rem; font-size: 1.8rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem;">${note.title}</h1>` : ''}
-			<div class='note-content'>${isDoc ? note.content : marked.parse(note.content)}</div>
+			<div class='note-content'>${(isDoc && (note.content.includes('<p>') || note.content.includes('<h1'))) ? note.content : marked.parse(note.content)}</div>
             ${attachmentsHTML}
 		`;
 		return noteElement;
