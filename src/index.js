@@ -123,6 +123,18 @@ async function handleApiRequest(request, env) {
 				return handleDocsNodeMove(request, nodeId, env);
 			}
 		}
+
+		// 匹配分享请求
+		const shareMatch = pathname.match(/^\/api\/docs\/node\/([a-zA-Z0-9-]+)\/share$/);
+		if (shareMatch) {
+			const nodeId = shareMatch[1];
+			if (request.method === 'POST') {
+				return handleShareNodeRequest(nodeId, request, env);
+			}
+			if (request.method === 'DELETE') {
+				return handleUnshareNodeRequest(nodeId, env);
+			}
+		}
 	}
 	// --- END: 更新后的 Docs API 路由 ---
 
@@ -1834,17 +1846,34 @@ async function handleUnshareNoteRequest(noteId, env) {
  * GET /api/public/note/:publicId
  */
 async function handlePublicNoteRequest(publicId, env) {
-	const kvData = await env.NOTES_KV.get(`public_memo:${publicId}`, 'json');
-	if (!kvData || !kvData.noteId) {
-		return jsonResponse({ error: '未找到分享笔记或已过期' }, 404);
+	let kvData = await env.NOTES_KV.get(`public_memo:${publicId}`, 'json');
+	let isNode = false;
+
+	if (!kvData) {
+		kvData = await env.NOTES_KV.get(`public_node:${publicId}`, 'json');
+		if (kvData) isNode = true;
 	}
 
-	const noteId = kvData.noteId;
+	if (!kvData || (!kvData.noteId && !kvData.nodeId)) {
+		return jsonResponse({ error: '未找到分享内容或已过期' }, 404);
+	}
+
+	const id = isNode ? kvData.nodeId : kvData.noteId;
 
 	try {
-		const note = await env.DB.prepare("SELECT id, content, updated_at, files FROM notes WHERE id = ?").bind(noteId).first();
-		if (!note) {
-			return jsonResponse({ error: '未找到分享笔记内容' }, 404);
+		let item;
+		if (isNode) {
+			item = await env.DB.prepare("SELECT title, content, updated_at FROM nodes WHERE id = ?").bind(id).first();
+			if (item) {
+				item.type = 'node';
+				item.content = item.content || '';
+			}
+		} else {
+			item = await env.DB.prepare("SELECT id, content, updated_at, files FROM notes WHERE id = ?").bind(id).first();
+		}
+
+		if (!item) {
+			return jsonResponse({ error: '未找到分享内容' }, 404);
 		}
 
 		// --- 辅助函数：将任何私有 URL 转换为公开 URL ---
@@ -1868,50 +1897,46 @@ async function handlePublicNoteRequest(publicId, env) {
 			return privateUrl; // 如果不是私有链接，则原样返回
 		};
 
-		// 1. 处理笔记正文 `content` 中的内联图片和视频
+		// 1. 处理正文 `content` 中的内联图片和视频
 		const urlRegex = /(\/api\/(?:files|images)\/[a-zA-Z0-9\/-]+)/g;
-		const matches = [...note.content.matchAll(urlRegex)];
-		let processedContent = note.content;
+		const matches = [...item.content.matchAll(urlRegex)];
+		let processedContent = item.content;
 		for (const match of matches) {
 			const privateUrl = match[0];
 			const publicUrl = await createPublicUrlFor(privateUrl);
 			processedContent = processedContent.replace(privateUrl, publicUrl);
 		}
-		note.content = processedContent;
+		item.content = processedContent;
 
-		// 2. 处理 `files` 附件列表
-		let files = [];
-		if (typeof note.files === 'string') {
-			try { files = JSON.parse(note.files); } catch (e) { /* an empty array is fine */ }
-		}
-		for (const file of files) {
-			if (file.id) { // 只处理有 id 的内部文件
-				const privateUrl = `/api/files/${note.id}/${file.id}`;
-				// 复用上面的逻辑，但这次我们知道所有元数据
-				const filePublicId = crypto.randomUUID();
-				await env.NOTES_KV.put(`public_file:${filePublicId}`, JSON.stringify({
-					noteId: note.id,
-					fileId: file.id,
-					fileName: file.name,
-					contentType: file.type
-				}));
-				file.public_url = `/api/public/file/${filePublicId}`;
+		if (!isNode) {
+			// 2. 处理 `files` 附件列表
+			let files = [];
+			if (typeof item.files === 'string') {
+				try { files = JSON.parse(item.files); } catch (e) { /* an empty array is fine */ }
 			}
+			for (const file of files) {
+				if (file.id) { // 只处理有 id 的内部文件
+					const privateUrl = `/api/files/${item.id}/${file.id}`;
+					const filePublicId = crypto.randomUUID();
+					await env.NOTES_KV.put(`public_file:${filePublicId}`, JSON.stringify({
+						noteId: item.id,
+						fileId: file.id,
+						fileName: file.name,
+						contentType: file.type
+					}));
+					file.public_url = `/api/public/file/${filePublicId}`;
+				}
+			}
+			item.files = files;
+			delete item.id;
+			delete item.pics;
+			delete item.videos;
 		}
-		note.files = files;
 
-		// 3. 安全处理：移除敏感信息
-		delete note.id;
-
-		// `pics` 和 `videos` 字段的内容已经被处理并包含在 `content` 中，
-		// 为保持 API 响应干净，我们不再需要它们。
-		delete note.pics;
-		delete note.videos;
-
-		return jsonResponse(note);
+		return jsonResponse(item);
 
 	} catch (e) {
-		console.error(`Public Note Error (publicId: ${publicId}):`, e.message);
+		console.error(`Public Item Error (publicId: ${publicId}):`, e.message);
 		return jsonResponse({ error: '数据库错误' }, 500);
 	}
 }
@@ -1921,22 +1946,29 @@ async function handlePublicNoteRequest(publicId, env) {
  * GET /api/public/note/raw/:publicId
  */
 async function handlePublicRawNoteRequest(publicId, env) {
-	// 1. 从 KV 获取 noteId
-	const kvData = await env.NOTES_KV.get(`public_memo:${publicId}`, 'json');
-	if (!kvData || !kvData.noteId) {
+	let kvData = await env.NOTES_KV.get(`public_memo:${publicId}`, 'json');
+	let isNode = false;
+
+	if (!kvData) {
+		kvData = await env.NOTES_KV.get(`public_node:${publicId}`, 'json');
+		if (kvData) isNode = true;
+	}
+
+	if (!kvData || (!kvData.noteId && !kvData.nodeId)) {
 		return new Response('未找到', { status: 404 });
 	}
 
+	const id = isNode ? kvData.nodeId : kvData.noteId;
+
 	try {
-		// 2. 使用获取到的 noteId 从 D1 查询笔记内容
-		const note = await env.DB.prepare("SELECT content FROM notes WHERE id = ?").bind(kvData.noteId).first();
-		if (!note) {
+		const item = await env.DB.prepare(isNode ? "SELECT content FROM nodes WHERE id = ?" : "SELECT content FROM notes WHERE id = ?").bind(id).first();
+		if (!item) {
 			return new Response('未找到', { status: 404 });
 		}
 		const headers = new Headers({ 'Content-Type': 'text/plain; charset=utf-8' });
-		return new Response(note.content, { headers });
+		return new Response(item.content, { headers });
 	} catch (e) {
-		console.error(`Public Raw Note Error (publicId: ${publicId}):`, e.message);
+		console.error(`Public Raw Item Error (publicId: ${publicId}):`, e.message);
 		return new Response('服务器错误', { status: 500 });
 	}
 }
@@ -2012,6 +2044,87 @@ async function handleMergeNotes(request, env) {
 	} catch (e) {
 		console.error("Merge Notes Error:", e.message, e.cause);
 		return jsonResponse({ error: '合并期间发生数据库或 R2 错误', message: e.message }, 500);
+	}
+}
+
+/**
+ * [认证] 处理创建或获取/更新文档分享链接的请求
+ */
+async function handleShareNodeRequest(nodeId, request, env) {
+	try {
+		const body = await request.json().catch(() => ({}));
+
+		if (body.publicId && body.expirationTtl !== undefined) {
+			const nodeShareKey = `node_share:${nodeId}`;
+			const publicNodeKey = `public_node:${body.publicId}`;
+
+			const storedPublicId = await env.NOTES_KV.get(nodeShareKey);
+			if (storedPublicId !== body.publicId) {
+				return jsonResponse({ error: '此文档的公开 ID 无效。' }, 400);
+			}
+
+			const nodeData = await env.NOTES_KV.get(publicNodeKey);
+			if (!nodeData) {
+				return jsonResponse({ error: '未找到分享链接或已过期。' }, 404);
+			}
+
+			const options = {};
+			if (body.expirationTtl > 0) {
+				options.expirationTtl = body.expirationTtl;
+			}
+
+			await Promise.all([
+				env.NOTES_KV.put(publicNodeKey, nodeData, options),
+				env.NOTES_KV.put(nodeShareKey, body.publicId, options)
+			]);
+
+			return jsonResponse({ success: true, message: '过期时间已更新。' });
+
+		} else {
+			let publicId = await env.NOTES_KV.get(`node_share:${nodeId}`);
+
+			if (!publicId) {
+				publicId = crypto.randomUUID();
+				const expirationTtl = (body.expirationTtl !== undefined) ? body.expirationTtl : 3600;
+				const options = {};
+				if (expirationTtl > 0) {
+					options.expirationTtl = expirationTtl;
+				}
+
+				await Promise.all([
+					env.NOTES_KV.put(`public_node:${publicId}`, JSON.stringify({ nodeId }), options),
+					env.NOTES_KV.put(`node_share:${nodeId}`, publicId, options)
+				]);
+			}
+
+			const { protocol, host } = new URL(request.url);
+			const displayUrl = `${protocol}//${host}/share/${publicId}`;
+			const rawUrl = `${protocol}//${host}/api/public/note/raw/${publicId}`;
+
+			return jsonResponse({ displayUrl, rawUrl, publicId });
+		}
+	} catch (e) {
+		console.error(`Share/Update Node Error (nodeId: ${nodeId}):`, e.message);
+		return jsonResponse({ error: '操作期间发生数据库或 KV 错误' }, 500);
+	}
+}
+
+/**
+ * 处理取消文档分享的请求
+ */
+async function handleUnshareNodeRequest(nodeId, env) {
+	try {
+		const publicId = await env.NOTES_KV.get(`node_share:${nodeId}`);
+		if (publicId) {
+			await Promise.all([
+				env.NOTES_KV.delete(`public_node:${publicId}`),
+				env.NOTES_KV.delete(`node_share:${nodeId}`)
+			]);
+		}
+		return jsonResponse({ success: true, message: '分享已撤销' });
+	} catch (e) {
+		console.error(`Unshare Node Error (nodeId: ${nodeId}):`, e.message);
+		return jsonResponse({ error: '撤销链接时发生数据库错误' }, 500);
 	}
 }
 
