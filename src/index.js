@@ -608,7 +608,7 @@ async function handleNotesList(request, env) {
 		}
 	} catch (e) {
 		console.error("D1 Error:", e.message, e.cause);
-		return jsonResponse({ error: 'Database Error', message: e.message }, 500);
+		return jsonResponse({ error: '数据库错误', message: e.message }, 500);
 	}
 }
 
@@ -619,14 +619,14 @@ async function handleNoteDetail(request, noteId, env) {
 	const db = env.DB;
 	const id = parseInt(noteId);
 	if (isNaN(id)) {
-		return new Response('Invalid Note ID', { status: 400 });
+		return new Response('无效的笔记 ID', { status: 400 });
 	}
 
 	try {
 		// 首先获取现有笔记，用于文件删除和返回数据
 		let existingNote = await db.prepare("SELECT * FROM notes WHERE id = ?").bind(id).first();
 		if (!existingNote) {
-			return new Response('Not Found', { status: 404 });
+			return new Response('未找到', { status: 404 });
 		}
 		// 确保 files 字段是数组
 		try {
@@ -755,7 +755,7 @@ async function handleNoteDetail(request, noteId, env) {
 		}
 	} catch (e) {
 		console.error("D1 Error:", e.message, e.cause);
-		return jsonResponse({ error: 'Database Error', message: e.message }, 500);
+		return jsonResponse({ error: '数据库错误', message: e.message }, 500);
 	}
 }
 
@@ -763,7 +763,7 @@ async function handleFileRequest(noteId, fileId, request, env) {
 	const db = env.DB;
 	const id = parseInt(noteId);
 	if (isNaN(id)) {
-		return new Response('Invalid Note ID', { status: 400 });
+		return new Response('无效的笔记 ID', { status: 400 });
 	}
 
 	// 尝试从数据库获取元数据
@@ -787,7 +787,7 @@ async function handleFileRequest(noteId, fileId, request, env) {
 	const object = await env.NOTES_R2_BUCKET.get(`${id}/${fileId}`);
 	if (object === null) {
 		// 如果 R2 中确实没有这个文件，才返回 404
-		return new Response('File not found in storage', { status: 404 });
+		return new Response('存储中未找到文件', { status: 404 });
 	}
 
 	const headers = new Headers();
@@ -925,7 +925,7 @@ async function handleTelegramProxy(request, env) {
 	const match = pathname.match(/^\/api\/tg-media-proxy\/([^\/]+)$/);
 
 	if (!match || !match[1]) {
-		return new Response('Invalid file_id', { status: 400 });
+		return new Response('无效的 file_id', { status: 400 });
 	}
 
 	const fileId = match[1];
@@ -933,7 +933,7 @@ async function handleTelegramProxy(request, env) {
 
 	if (!botToken) {
 		console.error("TELEGRAM_BOT_TOKEN secret is not set.");
-		return new Response('Bot not configured', { status: 500 });
+		return new Response('机器人未配置', { status: 500 });
 	}
 
 	try {
@@ -944,7 +944,7 @@ async function handleTelegramProxy(request, env) {
 
 		if (!fileInfo.ok) {
 			console.error(`Telegram getFile API error for file_id ${fileId}:`, fileInfo.description);
-			return new Response(`Telegram API error: ${fileInfo.description}`, { status: 502 }); // 502 Bad Gateway
+			return new Response(`Telegram API 错误: ${fileInfo.description}`, { status: 502 }); // 502 Bad Gateway
 		}
 
 		// 2. 构建临时的下载链接
@@ -1056,7 +1056,7 @@ async function handleTelegramWebhook(request, env, secret) {
 			const getFileUrl = `https://api.telegram.org/bot${botToken}/getFile?file_id=${photo.file_id}`;
 			const fileInfoRes = await fetch(getFileUrl);
 			const fileInfo = await fileInfoRes.json();
-			if (!fileInfo.ok) throw new Error(`Telegram getFile API 错误 (photo): ${fileInfo.description}`);
+			if (!fileInfo.ok) throw new Error(`Telegram getFile API 错误 (图片): ${fileInfo.description}`);
 			const filePath = fileInfo.result.file_path;
 			const fileName = `photo_${message.message_id}.${(filePath.split('.').pop() || 'jpg')}`;
 			const downloadUrl = `https://api.telegram.org/file/bot${botToken}/${filePath}`;
@@ -1081,7 +1081,7 @@ async function handleTelegramWebhook(request, env, secret) {
 				const getFileUrl = `https://api.telegram.org/bot${botToken}/getFile?file_id=${video.file_id}`;
 				const fileInfoRes = await fetch(getFileUrl);
 				const fileInfo = await fileInfoRes.json();
-				if (!fileInfo.ok) throw new Error(`Telegram getFile API 错误 (video): ${fileInfo.description}`);
+				if (!fileInfo.ok) throw new Error(`Telegram getFile API 错误 (视频): ${fileInfo.description}`);
 				const downloadUrl = `https://api.telegram.org/file/bot${botToken}/${fileInfo.result.file_path}`;
 				const fileRes = await fetch(downloadUrl);
 				if (!fileRes.ok) throw new Error("从 Telegram 下载视频失败。");
@@ -1111,7 +1111,7 @@ async function handleTelegramWebhook(request, env, secret) {
 				const getFileUrl = `https://api.telegram.org/bot${botToken}/getFile?file_id=${document.file_id}`;
 				const fileInfoRes = await fetch(getFileUrl);
 				const fileInfo = await fileInfoRes.json();
-				if (!fileInfo.ok) throw new Error(`Telegram getFile API 错误 (document): ${fileInfo.description}`);
+				if (!fileInfo.ok) throw new Error(`Telegram getFile API 错误 (文档): ${fileInfo.description}`);
 				const downloadUrl = `https://api.telegram.org/file/bot${botToken}/${fileInfo.result.file_path}`;
 				const fileRes = await fetch(downloadUrl);
 				if (!fileRes.ok) throw new Error("从 Telegram 下载文件失败。");
@@ -1178,10 +1178,10 @@ async function sendTelegramMessage(chatId, text, botToken) {
 		});
 		if (!response.ok) {
 			const errorBody = await response.json();
-			console.error(`Failed to send Telegram message: ${errorBody.description}`);
+			console.error(`发送 Telegram 消息失败: ${errorBody.description}`);
 		}
 	} catch (error) {
-		console.error(`Error sending Telegram message: ${error.message}`);
+		console.error(`发送 Telegram 消息时出错: ${error.message}`);
 	}
 }
 
