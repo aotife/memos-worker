@@ -122,14 +122,20 @@
 
 	function formatTimestamp(timestamp) {
 		const date = new Date(timestamp);
-		return date.toLocaleString('zh-CN', {
+		const absoluteTime = date.toLocaleString('zh-CN', {
 			year: 'numeric', month: 'long', day: 'numeric',
 			hour: 'numeric', minute: '2-digit'
 		});
+		const now = Date.now();
+		const diffMs = now - timestamp;
+		if (diffMs < 60000) {
+			return '刚刚';
+		}
+		return absoluteTime;
 	}
 	const formatBytes = (b, d = 2) => {
 		if (!b || b === 0) return '0 字节';
-		const k = 1024, s = ['B', 'KB', 'MB', 'GB'];
+		const k = 1024, s = ['字节', 'KB', 'MB', 'GB'];
 		const i = Math.floor(Math.log(b) / Math.log(k));
 		return parseFloat((b / Math.pow(k, i)).toFixed(d)) + ' ' + s[i];
 	};
