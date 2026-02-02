@@ -241,10 +241,64 @@
 	text-align: left;
   }
   .ql-table-container th {
-	background-color: var(--hover-bg-color);
-	font-weight: 600;
-  }
-  /* END OF NEW CSS */
+		background-color: var(--hover-bg-color);
+		font-weight: 600;
+	}
+	/* Share Modal Styles */
+	#share-modal {
+		position: fixed;
+		top: 0; left: 0; right: 0; bottom: 0;
+		background: rgba(0, 0, 0, 0.5);
+		z-index: 1000;
+		display: none;
+		align-items: center;
+		justify-content: center;
+	}
+	.modal-content {
+		background-color: var(--sidebar-bg);
+		padding: 20px;
+		border-radius: 8px;
+		width: 400px;
+		max-width: 90%;
+		box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+	}
+	.modal-header {
+		display: flex;
+		justify-content: space-between;
+		align-items: center;
+		margin-bottom: 20px;
+	}
+	.modal-header h3 { margin: 0; font-size: 18px; }
+	.close-modal { background: none; border: none; font-size: 20px; cursor: pointer; color: var(--text-muted-color); }
+	.share-link-container {
+		display: flex;
+		gap: 10px;
+		margin-bottom: 20px;
+	}
+	#share-url {
+		flex: 1;
+		padding: 8px;
+		border: 1px solid var(--border-color);
+		border-radius: 4px;
+		background: var(--bg-color);
+		color: var(--text-color);
+		font-size: 14px;
+	}
+	.modal-actions {
+		display: flex;
+		justify-content: flex-end;
+		gap: 10px;
+	}
+	.modal-actions button {
+		padding: 8px 15px;
+		border-radius: 4px;
+		cursor: pointer;
+		font-size: 14px;
+	}
+	.btn-primary { background-color: var(--accent-color); color: white; border: none; }
+	.btn-secondary { background-color: transparent; border: 1px solid var(--border-color); color: var(--text-color); }
+	.btn-danger { background-color: #dc3545; color: white; border: none; }
+	/* END OF NEW CSS */
 </style>
 <body>
 <div class="app-container">
@@ -263,6 +317,7 @@
 		<div id="editor"><!-- Quill editor mounts here --></div>
 		<div id="editor-actions">
 			<button id="theme-toggle-btn" class="action-btn" title="切换主题"><i class="fas fa-moon"></i></button>
+			<button id="share-btn" class="action-btn" title="分享文档" disabled><i class="fas fa-share-alt"></i></button>
 			<button id="save-btn" disabled><i class="fas fa-save"></i> 保存</button>
 			<a href="/" class="action-btn" title="返回首页" target="_blank"><i class="fas fa-arrow-up-right-from-square"></i></a>
 		</div>
@@ -274,9 +329,26 @@
 	</aside>
 </div>
 <div id="context-menu">
+	<button id="ctx-share-btn"><i class="fas fa-share-alt"></i> 分享</button>
 	<button id="ctx-rename-btn"><i class="fas fa-edit"></i> 重命名</button>
 	<button id="ctx-move-btn" disabled><i class="fas fa-arrows-alt"></i> 移动 (拖拽)</button>
 	<button id="ctx-delete-btn"><i class="fas fa-trash-alt"></i> 删除</button>
+</div>
+<div id="share-modal">
+	<div class="modal-content">
+		<div class="modal-header">
+			<h3>分享文档</h3>
+			<button class="close-modal">&times;</button>
+		</div>
+		<div class="share-link-container">
+			<input type="text" id="share-url" readonly>
+			<button id="copy-share-btn" class="btn-primary">复制</button>
+		</div>
+		<div class="modal-actions">
+			<button id="unshare-btn" class="btn-danger">停止分享</button>
+			<button class="btn-secondary close-modal">关闭</button>
+		</div>
+	</div>
 </div>
 <div id="editor-loader" class="hidden"><div class="spinner"></div></div>
 
@@ -360,6 +432,16 @@
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify({ new_title })
 		}).then(handleApiResponse),
+
+		shareNode: (id) => fetch(`/api/docs/node/${id}/share`, {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify({})
+		}).then(handleApiResponse),
+
+		unshareNode: (id) => fetch(`/api/docs/node/${id}/share`, {
+			method: 'DELETE'
+		}).then(handleApiResponse),
 	};
 
 	// --- MAIN APPLICATION LOGIC ---
@@ -376,10 +458,19 @@
 		const newNoteBtn = document.getElementById('new-note-btn');
 		const newFolderBtn = document.getElementById('new-folder-btn');
 		const saveBtn = document.getElementById('save-btn');
+		const shareBtn = document.getElementById('share-btn');
 		const contextMenu = document.getElementById('context-menu');
 		const renameBtn = document.getElementById('ctx-rename-btn');
+		const shareCtxBtn = document.getElementById('ctx-share-btn');
 		const deleteBtn = document.getElementById('ctx-delete-btn');
 		const editorLoader = document.getElementById('editor-loader');
+
+		const shareModal = document.getElementById('share-modal');
+		const shareUrlInput = document.getElementById('share-url');
+		const copyShareBtn = document.getElementById('copy-share-btn');
+		const unshareBtn = document.getElementById('unshare-btn');
+		const closeModals = document.querySelectorAll('.close-modal');
+
 		const outlineContainer = document.getElementById('outline-container');
 		// const api = mockApi;
 		const api = realApi;
@@ -884,11 +975,40 @@
 				updateOutline();
 				saveBtn.disabled = true;
 				saveBtn.innerHTML = '<i class=\'fas fa-check\'></i> 已保存';
+				shareBtn.disabled = false;
 			} catch (error) {
 				quill.root.innerHTML = `<h1>加载失败</h1><p>${error.message}</p>`;
 				activeNoteId = null;
+				shareBtn.disabled = true;
 			} finally {
 				hideLoader();
+			}
+		}
+
+		async function handleShare(nodeId) {
+			if (!nodeId) return;
+			const node = flatNodes.find(n => n.id === nodeId);
+			if (node && node.type === 'folder') {
+				alert('暂不支持分享文件夹。');
+				return;
+			}
+			try {
+				const result = await api.shareNode(nodeId);
+				shareUrlInput.value = result.displayUrl;
+				shareModal.style.display = 'flex';
+			} catch (error) {
+				alert(`分享失败: ${error.message}`);
+			}
+		}
+
+		async function handleUnshare(nodeId) {
+			if (!nodeId || !confirm('确定要停止分享此文档吗？')) return;
+			try {
+				await api.unshareNode(nodeId);
+				shareModal.style.display = 'none';
+				alert('已停止分享');
+			} catch (error) {
+				alert(`停止分享失败: ${error.message}`);
 			}
 		}
 		async function saveActiveNote() {
@@ -907,12 +1027,16 @@
 		async function handleDelete(nodeId) {
 			const nodeToDelete = flatNodes.find(n => n.id === nodeId);
 			if (!nodeToDelete || !confirm(`确定删除 "${nodeToDelete.title}" 吗？`)) return;
-			await api.deleteNode(nodeId);
-			await refreshFileTree();
-			if (nodeId === activeNoteId) {
-				activeNoteId = null; selectedNodeId = null;
-				const firstFile = flatNodes.find(n => n.type === 'file');
-				if (firstFile) await loadNote(firstFile.id); else { quill.root.innerHTML = '<h1>所有文档已删除</h1>'; setEditorEditable(false); }
+			try {
+				await api.deleteNode(nodeId);
+				await refreshFileTree();
+				if (nodeId === activeNoteId) {
+					activeNoteId = null; selectedNodeId = null;
+					const firstFile = flatNodes.find(n => n.type === 'file');
+					if (firstFile) await loadNote(firstFile.id); else { quill.root.innerHTML = '<h1>所有文档已删除</h1>'; setEditorEditable(false); }
+				}
+			} catch (error) {
+				alert(`删除失败: ${error.message}`);
 			}
 		}
 		async function handleRename(nodeId) {
@@ -920,8 +1044,12 @@
 			if (!nodeToRename) return;
 			const newTitle = prompt('新名称:', nodeToRename.title);
 			if (newTitle && newTitle.trim() && newTitle.trim() !== nodeToRename.title) {
-				await api.renameNode(nodeId, newTitle.trim());
-				await refreshFileTree();
+				try {
+					await api.renameNode(nodeId, newTitle.trim());
+					await refreshFileTree();
+				} catch (error) {
+					alert(`重命名失败: ${error.message}`);
+				}
 			}
 		}
 		function flattenTree(nodes, parentId = null) {
@@ -958,11 +1086,45 @@
 		function setupEventListeners() {
 			themeToggleBtn.addEventListener('click', handleThemeToggle);
 			saveBtn.addEventListener('click', saveActiveNote);
+			shareBtn.addEventListener('click', () => handleShare(activeNoteId));
+			shareCtxBtn.addEventListener('click', () => handleShare(selectedNodeId));
 			renameBtn.addEventListener('click', () => handleRename(selectedNodeId));
 			deleteBtn.addEventListener('click', () => handleDelete(selectedNodeId));
+
+			copyShareBtn.addEventListener('click', () => {
+				shareUrlInput.select();
+				document.execCommand('copy');
+				const originalText = copyShareBtn.innerText;
+				copyShareBtn.innerText = '已复制';
+				setTimeout(() => copyShareBtn.innerText = originalText, 2000);
+			});
+			unshareBtn.addEventListener('click', () => handleUnshare(selectedNodeId || activeNoteId));
+			closeModals.forEach(btn => btn.addEventListener('click', () => shareModal.style.display = 'none'));
+			shareModal.addEventListener('click', (e) => { if (e.target === shareModal) shareModal.style.display = 'none'; });
+
 			document.addEventListener('click', () => contextMenu.style.display = 'none');
-			newNoteBtn.addEventListener('click', async () => { const name = prompt('新文档名称:'); if (name) { await api.createNode({type: 'file', title: name, parent_id: getParentIdForNewNode()}); await refreshFileTree(); } });
-			newFolderBtn.addEventListener('click', async () => { const name = prompt('新文件夹名称:'); if (name) { await api.createNode({type: 'folder', title: name, parent_id: getParentIdForNewNode()}); await refreshFileTree(); } });
+			newNoteBtn.addEventListener('click', async () => { 
+				const name = prompt('新文档名称:'); 
+				if (name) { 
+					try {
+						await api.createNode({type: 'file', title: name, parent_id: getParentIdForNewNode()}); 
+						await refreshFileTree(); 
+					} catch (error) {
+						alert(`创建文档失败: ${error.message}`);
+					}
+				} 
+			});
+			newFolderBtn.addEventListener('click', async () => { 
+				const name = prompt('新文件夹名称:'); 
+				if (name) { 
+					try {
+						await api.createNode({type: 'folder', title: name, parent_id: getParentIdForNewNode()}); 
+						await refreshFileTree(); 
+					} catch (error) {
+						alert(`创建文件夹失败: ${error.message}`);
+					}
+				} 
+			});
 			fileTreeEl.addEventListener('click', e => {
 				const target = e.target.closest('.tree-item'); if (!target) return;
 				const id = target.dataset.id;
