@@ -912,39 +912,56 @@
 				}
 			});
 
-			// --- NEW: Add Paste Handler for Image Uploads ---
+			// --- NEW: Add Paste Handler for Image Uploads and Markdown Tables ---
 			editor.root.addEventListener('paste', async (event) => {
-				const items = (event.clipboardData || window.clipboardData).items;
-				let imageFile = null;
+				const clipboardData = (event.clipboardData || window.clipboardData);
+				const items = clipboardData.items;
+				const text = clipboardData.getData('text/plain');
+				
+				// 1. Check for Markdown Tables
+				if (text && text.includes('|')) {
+					const lines = text.trim().split('\n');
+					if (lines.length >= 3) {
+						const tableRegex = /^\|.*\|$/;
+						const separatorRegex = /^\|[-|: ]+\|$/;
+						
+						if (tableRegex.test(lines[0]) && separatorRegex.test(lines[1])) {
+							event.preventDefault();
+							const range = editor.getSelection(true);
+							if (range) {
+								editor.insertEmbed(range.index, 'atomic-table', text.trim(), 'user');
+								editor.insertText(range.index + 1, '\n', 'user');
+								editor.setSelection(range.index + 2, 0);
+								return;
+							}
+						}
+					}
+				}
 
+				// 2. Check for Images
+				let imageFile = null;
 				for (const item of items) {
 					if (item.type.indexOf('image') === 0) {
 						imageFile = item.getAsFile();
-						break; // Found an image, stop searching
+						break;
 					}
 				}
 
 				if (imageFile) {
-					event.preventDefault(); // Prevent default paste behavior
-					const range = editor.getSelection(true); // Get cursor position
+					event.preventDefault();
+					const range = editor.getSelection(true);
 					if (!range) return;
 
-					// 1. Insert a placeholder
 					const placeholderText = '[图片上传中...]';
 					editor.insertText(range.index, placeholderText, 'user');
 					const placeholderLength = placeholderText.length;
 
 					try {
-						// 2. Upload the image
 						const imageUrl = await uploadImage(imageFile);
-
-						// 3. Replace placeholder with the actual image
 						editor.deleteText(range.index, placeholderLength, 'user');
 						editor.insertEmbed(range.index, 'image', imageUrl, 'user');
-						editor.setSelection(range.index + 1, 'user'); // Move cursor after the image
-
+						editor.setSelection(range.index + 1, 'user');
 					} catch (error) {
-						// 4. Handle upload failure
 						console.error('图片上传失败:', error);
 						editor.deleteText(range.index, placeholderLength, 'user');
 						editor.insertText(range.index, '[图片上传失败]', { 'color': 'red' }, 'user');
