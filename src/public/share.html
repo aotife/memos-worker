@@ -131,6 +131,18 @@
 		if (diffMs < 60000) {
 			return '刚刚';
 		}
+		const minutesAgo = Math.floor(diffMs / 60000);
+		if (minutesAgo < 60) {
+			return `${minutesAgo} 分钟前`;
+		}
+		const hoursAgo = Math.floor(minutesAgo / 60);
+		if (hoursAgo < 24) {
+			return `${hoursAgo} 小时前`;
+		}
+		const daysAgo = Math.floor(hoursAgo / 24);
+		if (daysAgo < 30) {
+			return `${daysAgo} 天前`;
+		}
 		return absoluteTime;
 	}
 	const formatBytes = (b, d = 2) => {
@@ -167,11 +179,18 @@
 			attachmentsHTML += '</div>';
 		}
 
+		// Check if it's a document (from nodes table) or a memo (from notes table)
+		const isDoc = !!note.title;
+		if (isDoc) {
+			document.title = `${note.title} - 分享文档`;
+		}
+
 		noteElement.innerHTML = `
 			<div class='note-header'>
 				<div class='note-meta'><span title='${new Date(note.updated_at).toISOString()}'>${time}</span></div>
 			</div>
-			<div class='note-content'>${marked.parse(note.content)}</div>
+			${isDoc ? `<h1 style="margin-top: 0; margin-bottom: 1rem; font-size: 1.8rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem;">${note.title}</h1>` : ''}
+			<div class='note-content'>${isDoc ? note.content : marked.parse(note.content)}</div>
             ${attachmentsHTML}
 		`;
 		return noteElement;
