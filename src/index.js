@@ -66,7 +66,7 @@ async function handleApiRequest(request, env) {
 	// --- 从这里开始，所有 API 都需要认证 ---
 	const session = await isSessionAuthenticated(request, env);
 	if (!session) {
-		return jsonResponse({ error: 'Unauthorized' }, 401);
+		return jsonResponse({ error: '未授权' }, 401);
 	}
 
 	if (request.method === 'POST' && pathname === '/api/notes/merge') {
@@ -174,7 +174,7 @@ async function handleApiRequest(request, env) {
 	if (pathname === '/api/notes') {
 		return handleNotesList(request, env);
 	}
-	return new Response('Not Found', { status: 404 });
+	return new Response('未找到', { status: 404 });
 }
 
 /**
@@ -203,7 +203,7 @@ async function handleStatsRequest(request, env) {
 		return jsonResponse(stats);
 	} catch (e) {
 		console.error("Stats Error:", e.message);
-		return jsonResponse({ error: 'Database Error', message: e.message }, 500);
+		return jsonResponse({ error: '数据库错误', message: e.message }, 500);
 	}
 }
 
@@ -258,7 +258,7 @@ async function handleTimelineRequest(request, env) {
 		return jsonResponse(timeline);
 	} catch (e) {
 		console.error("Timeline Error:", e.message);
-		return jsonResponse({ error: 'Database Error', message: e.message }, 500);
+		return jsonResponse({ error: '数据库错误', message: e.message }, 500);
 	}
 }
 /**
@@ -336,7 +336,7 @@ async function handleSearchRequest(request, env) {
 		return jsonResponse({ notes, hasMore });
 	} catch (e) {
 		console.error("Search Error:", e.message);
-		return jsonResponse({ error: 'Database Error', message: e.message }, 500);
+		return jsonResponse({ error: '数据库错误', message: e.message }, 500);
 	}
 }
 
@@ -360,7 +360,7 @@ async function handleTagsList(request, env) {
 		return jsonResponse(results);
 	} catch (e) {
 		console.error("Tags List Error:", e.message);
-		return jsonResponse({ error: 'Database Error' }, 500);
+		return jsonResponse({ error: '数据库错误' }, 500);
 	}
 }
 
@@ -400,7 +400,7 @@ async function handleLogin(request, env) {
 	} catch (e) {
 		console.error("Login Error:", e.message);
 	}
-	return jsonResponse({ error: 'Invalid credentials' }, 401);
+	return jsonResponse({ error: '用户名或密码错误' }, 401);
 }
 
 /**
@@ -470,7 +470,7 @@ async function handleSetSettings(request, env) {
 		return jsonResponse({ success: true });
 	} catch (e) {
 		console.error("Set Settings Error:", e.message);
-		return jsonResponse({ error: 'Failed to save settings' }, 500);
+		return jsonResponse({ error: '保存设置失败' }, 500);
 	}
 }
 
@@ -560,7 +560,7 @@ async function handleNotesList(request, env) {
 				const files = formData.getAll('file');
 
 				if (!content.trim() && files.every(f => !f.name)) {
-					return jsonResponse({ error: 'Content or file is required.' }, 400);
+					return jsonResponse({ error: '内容或文件是必需的。' }, 400);
 				}
 
 				const now = Date.now();
@@ -577,7 +577,7 @@ async function handleNotesList(request, env) {
 				// 【核心修改】将提取出的 picUrls 绑定到 SQL 语句中
 				const { id: noteId } = await insertStmt.bind(content, "[]", now, now, picUrls).first();
 				if (!noteId) {
-					throw new Error("Failed to create note and get ID.");
+					throw new Error("创建笔记并获取 ID 失败。");
 				}
 
 				// --- 【重要逻辑调整】现在上传的文件，只有非图片类型才算作 "附件" (files) ---
@@ -955,7 +955,7 @@ async function handleTelegramProxy(request, env) {
 
 	} catch (e) {
 		console.error("Telegram Proxy Error:", e.message);
-		return new Response('Failed to proxy Telegram media', { status: 500 });
+		return new Response('代理 Telegram 媒体文件失败', { status: 500 });
 	}
 }
 
@@ -966,7 +966,7 @@ async function handleTelegramProxy(request, env) {
  */
 async function handleTelegramWebhook(request, env, secret) {
 	if (!env.TELEGRAM_WEBHOOK_SECRET || secret !== env.TELEGRAM_WEBHOOK_SECRET) {
-		return new Response('Unauthorized', { status: 401 });
+		return new Response('未授权', { status: 401 });
 	}
 	let chatId = null;
 	const botToken = env.TELEGRAM_BOT_TOKEN;
@@ -993,7 +993,7 @@ async function handleTelegramWebhook(request, env, secret) {
 		const bucket = env.NOTES_R2_BUCKET;
 		if (!botToken) {
 			console.error("TELEGRAM_BOT_TOKEN secret is not set.");
-			return new Response('Bot not configured', { status: 500 });
+			return new Response('机器人未配置', { status: 500 });
 		}
 
 		const text = message.text || message.caption || '';
@@ -1003,16 +1003,16 @@ async function handleTelegramWebhook(request, env, secret) {
 		let forwardInfo = '';
 		if (message.forward_from_chat) {
 			const chat = message.forward_from_chat;
-			const title = chat.title || 'a channel';
+			const title = chat.title || '一个频道';
 			if (chat.username) {
 				const channelUrl = `https://t.me/${chat.username}`;
-				forwardInfo = `*Forwarded from [${title}](${channelUrl})*`;
+				forwardInfo = `*转发自 [${title}](${channelUrl})*`;
 			} else {
-				forwardInfo = `*Forwarded from ${title}*`;
+				forwardInfo = `*转发自 ${title}*`;
 			}
 		} else if (message.forward_from) {
 			const fromName = `${message.forward_from.first_name || ''} ${message.forward_from.last_name || ''}`.trim();
-			forwardInfo = `*Forwarded from ${fromName}*`;
+			forwardInfo = `*转发自 ${fromName}*`;
 		}
 
 		let replyMarkdown = '';
@@ -1259,7 +1259,7 @@ async function handleStandaloneImageUpload(request, env) {
 		const file = formData.get('file');
 
 		if (!file || !file.name || file.size === 0) {
-			return jsonResponse({ error: 'A file is required for upload.' }, 400);
+			return jsonResponse({ error: '需要上传文件。' }, 400);
 		}
 
 		const imageId = crypto.randomUUID();
@@ -1278,7 +1278,7 @@ async function handleStandaloneImageUpload(request, env) {
 
 	} catch (e) {
 		console.error("Standalone Image Upload Error:", e.message);
-		return jsonResponse({ error: 'Upload failed', message: e.message }, 500);
+		return jsonResponse({ error: '上传失败', message: e.message }, 500);
 	}
 }
 
@@ -1291,7 +1291,7 @@ async function handleImgurProxyUpload(request, env) {
 		// 【注意】从前端获取 Client ID，而不是硬编码在后端
 		const clientId = formData.get('clientId');
 		if (!clientId) {
-			return jsonResponse({ error: 'Imgur Client ID is required.' }, 400);
+			return jsonResponse({ error: '需要 Imgur Client ID。' }, 400);
 		}
 
 		// Imgur 需要 'image' 字段
@@ -1309,20 +1309,20 @@ async function handleImgurProxyUpload(request, env) {
 
 		if (!imgurResponse.ok) {
 			const errorBody = await imgurResponse.json();
-			throw new Error(`Imgur API responded with status ${imgurResponse.status}: ${errorBody.data.error}`);
+			throw new Error(`Imgur API 响应状态码 ${imgurResponse.status}: ${errorBody.data.error}`);
 		}
 
 		const result = await imgurResponse.json();
 
 		if (!result.success) {
-			throw new Error('Imgur API returned a failure response.');
+			throw new Error('Imgur API 返回了失败响应。');
 		}
 
 		return jsonResponse({ success: true, url: result.data.link });
 
 	} catch (e) {
 		console.error("Imgur Proxy Error:", e.message);
-		return jsonResponse({ error: 'Imgur upload failed via proxy', message: e.message }, 500);
+		return jsonResponse({ error: '通过代理上传 Imgur 失败', message: e.message }, 500);
 	}
 }
 
@@ -1380,7 +1380,7 @@ async function handleGetAllAttachments(request, env) {
 
 	} catch (e) {
 		console.error("Get All Attachments Error:", e.message);
-		return jsonResponse({ error: 'Database Error', message: e.message }, 500);
+		return jsonResponse({ error: '数据库错误', message: e.message }, 500);
 	}
 }
 
@@ -1395,7 +1395,7 @@ async function handleServeStandaloneImage(imageId, env) {
 	const object = await env.NOTES_R2_BUCKET.get(r2Key);
 
 	if (object === null) {
-		return new Response('File not found', { status: 404 });
+		return new Response('文件未找到', { status: 404 });
 	}
 
 	const headers = new Headers();
@@ -1439,7 +1439,7 @@ async function handleDocsTree(request, env) {
 		return jsonResponse(tree);
 	} catch (e) {
 		console.error("Docs Tree Error:", e.message);
-		return jsonResponse({ error: 'Database Error', message: e.message }, 500);
+		return jsonResponse({ error: '数据库错误', message: e.message }, 500);
 	}
 }
 
@@ -1451,12 +1451,12 @@ async function handleDocsNodeGet(request, nodeId, env) {
 		const stmt = env.DB.prepare("SELECT id, type, title, content FROM nodes WHERE id = ?");
 		const node = await stmt.bind(nodeId).first();
 		if (!node) {
-			return jsonResponse({ error: 'Not Found' }, 404);
+			return jsonResponse({ error: '未找到' }, 404);
 		}
 		return jsonResponse(node);
 	} catch (e) {
 		console.error(`Docs Get Node Error (id: ${nodeId}):`, e.message);
-		return jsonResponse({ error: 'Database Error', message: e.message }, 500);
+		return jsonResponse({ error: '数据库错误', message: e.message }, 500);
 	}
 }
 
@@ -1472,7 +1472,7 @@ async function handleDocsNodeUpdate(request, nodeId, env) {
 		return jsonResponse({ success: true, id: nodeId });
 	} catch (e) {
 		console.error(`Docs Update Node Error (id: ${nodeId}):`, e.message);
-		return jsonResponse({ error: 'Database Error', message: e.message }, 500);
+		return jsonResponse({ error: '数据库错误', message: e.message }, 500);
 	}
 }
 
@@ -1483,7 +1483,7 @@ async function handleDocsNodeCreate(request, env) {
 	try {
 		const { type, title, parent_id = null } = await request.json();
 		if (!type || !title || !['file', 'folder'].includes(type)) {
-			return jsonResponse({ error: 'Invalid input' }, 400);
+			return jsonResponse({ error: '输入无效' }, 400);
 		}
 
 		const newNode = {
@@ -1504,7 +1504,7 @@ async function handleDocsNodeCreate(request, env) {
 		return jsonResponse(newNode, 201);
 	} catch (e) {
 		console.error("Docs Create Node Error:", e.message);
-		return jsonResponse({ error: 'Database Error', message: e.message }, 500);
+		return jsonResponse({ error: '数据库错误', message: e.message }, 500);
 	}
 }
 
@@ -1551,7 +1551,7 @@ async function handleDocsNodeDelete(request, nodeId, env) {
 
 	} catch (e) {
 		console.error(`Docs Delete Node Error (id: ${nodeId}):`, e.message, e.cause);
-		return jsonResponse({ error: 'Database Error', message: e.message }, 500);
+		return jsonResponse({ error: '数据库错误', message: e.message }, 500);
 	}
 }
 
@@ -1563,29 +1563,29 @@ async function handleDocsNodeMove(request, nodeId, env) {
 
 		// --- Validation ---
 		if (!nodeToMove) {
-			return jsonResponse({ error: "The node you are trying to move does not exist." }, 404);
+			return jsonResponse({ error: "您尝试移动的节点不存在。" }, 404);
 		}
 		if (nodeId === new_parent_id) {
-			return jsonResponse({ error: "Cannot move a node into itself." }, 400);
+			return jsonResponse({ error: "不能将节点移动到自身。" }, 400);
 		}
 		if (nodeToMove.parent_id === new_parent_id) {
-			return jsonResponse({ success: true, message: "Node is already in the target location." }); // No-op
+			return jsonResponse({ success: true, message: "节点已在目标位置。" }); // No-op
 		}
 
 		if (new_parent_id !== null) {
 			const parentNode = await db.prepare("SELECT type FROM nodes WHERE id = ?").bind(new_parent_id).first();
 			if (!parentNode) {
-				return jsonResponse({ error: "Target destination does not exist." }, 404);
+				return jsonResponse({ error: "目标位置不存在。" }, 404);
 			}
 			if (parentNode.type !== 'folder') {
-				return jsonResponse({ error: "Target destination must be a folder." }, 400);
+				return jsonResponse({ error: "目标位置必须是一个文件夹。" }, 400);
 			}
 		}
 
 		let currentParentId = new_parent_id;
 		while (currentParentId !== null) {
 			if (currentParentId === nodeId) {
-				return jsonResponse({ error: "Cannot move a folder into one of its own descendants." }, 400);
+				return jsonResponse({ error: "不能将文件夹移动到其子孙节点中。" }, 400);
 			}
 			// CRITICAL FIX: Check if the parent exists before trying to read its properties
 			const parent = await db.prepare("SELECT parent_id FROM nodes WHERE id = ?").bind(currentParentId).first();
@@ -1603,7 +1603,7 @@ async function handleDocsNodeMove(request, nodeId, env) {
 		return jsonResponse({ success: true });
 	} catch (e) {
 		console.error(`Docs Move Node Error (id: ${nodeId}):`, e.message, e.cause);
-		return jsonResponse({ error: 'Database Error', message: e.message }, 500);
+		return jsonResponse({ error: '数据库错误', message: e.message }, 500);
 	}
 }
 
@@ -1617,7 +1617,7 @@ async function handleDocsNodeRename(request, nodeId, env) {
 
 		// 验证 new_title 是否存在且不为空
 		if (!new_title || typeof new_title !== 'string' || new_title.trim() === '') {
-			return jsonResponse({ error: "A valid new title is required." }, 400);
+			return jsonResponse({ error: "需要一个有效的新标题。" }, 400);
 		}
 
 		const stmt = db.prepare("UPDATE nodes SET title = ?, updated_at = ? WHERE id = ?");
@@ -1626,7 +1626,7 @@ async function handleDocsNodeRename(request, nodeId, env) {
 		return jsonResponse({ success: true, new_title: new_title.trim() });
 	} catch (e) {
 		console.error(`Docs Rename Node Error (id: ${nodeId}):`, e.message, e.cause);
-		return jsonResponse({ error: 'Database Error', message: e.message }, 500);
+		return jsonResponse({ error: '数据库错误', message: e.message }, 500);
 	}
 }
 
@@ -1638,13 +1638,13 @@ async function handleShareFileRequest(noteId, fileId, request, env) {
 	const db = env.DB;
 	const id = parseInt(noteId);
 	if (isNaN(id)) {
-		return new Response('Invalid Note ID', { status: 400 });
+		return new Response('无效的笔记 ID', { status: 400 });
 	}
 
 	try {
 		const note = await db.prepare("SELECT files FROM notes WHERE id = ?").bind(id).first();
 		if (!note) {
-			return jsonResponse({ error: 'Note not found' }, 404);
+			return jsonResponse({ error: '未找到笔记' }, 404);
 		}
 
 		let files = [];
@@ -1656,7 +1656,7 @@ async function handleShareFileRequest(noteId, fileId, request, env) {
 
 		const fileIndex = files.findIndex(f => f.id === fileId);
 		if (fileIndex === -1) {
-			return jsonResponse({ error: 'File not found in this note' }, 404);
+			return jsonResponse({ error: '在此笔记中未找到文件' }, 404);
 		}
 
 		const file = files[fileIndex];
@@ -1683,7 +1683,7 @@ async function handleShareFileRequest(noteId, fileId, request, env) {
 		return jsonResponse({ url: publicUrl });
 	} catch (e) {
 		console.error(`Share File Error (noteId: ${noteId}, fileId: ${fileId}):`, e.message);
-		return jsonResponse({ error: 'Database error while generating link', message: e.message }, 500);
+		return jsonResponse({ error: '生成链接时发生数据库错误', message: e.message }, 500);
 	}
 }
 
@@ -1695,7 +1695,7 @@ async function handleShareFileRequest(noteId, fileId, request, env) {
 async function handlePublicFileRequest(publicId, request, env) {
 	const kvData = await env.NOTES_KV.get(`public_file:${publicId}`, 'json');
 	if (!kvData) {
-		return new Response('Public link not found or has expired.', { status: 404 });
+		return new Response('未找到公开链接或已过期。', { status: 404 });
 	}
 
 	let object;
@@ -1713,11 +1713,11 @@ async function handlePublicFileRequest(publicId, request, env) {
 		fileName = kvData.fileName;
 		contentType = kvData.contentType;
 	} else {
-		return new Response('Invalid public link data.', { status: 500 });
+		return new Response('无效的公开链接数据。', { status: 500 });
 	}
 
 	if (object === null) {
-		return new Response('File not found in storage', { status: 404 });
+		return new Response('存储中未找到文件', { status: 404 });
 	}
 
 	const headers = new Headers();
@@ -1756,13 +1756,13 @@ async function handleShareNoteRequest(noteId, request, env) {
 			// 为了安全，验证一下 publicId 是否真的属于这个 noteId
 			const storedPublicId = await env.NOTES_KV.get(noteShareKey);
 			if (storedPublicId !== body.publicId) {
-				return jsonResponse({ error: 'Invalid public ID for this note.' }, 400);
+				return jsonResponse({ error: '此笔记的公开 ID 无效。' }, 400);
 			}
 
 			// 获取旧值以便重新写入
 			const memoData = await env.NOTES_KV.get(publicMemoKey);
 			if (!memoData) {
-				return jsonResponse({ error: 'Share link not found or already expired.' }, 404);
+				return jsonResponse({ error: '未找到分享链接或已过期。' }, 404);
 			}
 
 			const options = {};
@@ -1777,7 +1777,7 @@ async function handleShareNoteRequest(noteId, request, env) {
 				env.NOTES_KV.put(noteShareKey, body.publicId, options)
 			]);
 
-			return jsonResponse({ success: true, message: 'Expiration updated.' });
+			return jsonResponse({ success: true, message: '过期时间已更新。' });
 
 		} else {
 			// --- 创建或获取新链接 ---
@@ -1806,7 +1806,7 @@ async function handleShareNoteRequest(noteId, request, env) {
 		}
 	} catch (e) {
 		console.error(`Share/Update Note Error (noteId: ${noteId}):`, e.message);
-		return jsonResponse({ error: 'Database or KV error during operation' }, 500);
+		return jsonResponse({ error: '操作期间发生数据库或 KV 错误' }, 500);
 	}
 }
 
@@ -1823,10 +1823,10 @@ async function handleUnshareNoteRequest(noteId, env) {
 				env.NOTES_KV.delete(`note_share:${noteId}`)
 			]);
 		}
-		return jsonResponse({ success: true, message: 'Sharing has been revoked.' });
+		return jsonResponse({ success: true, message: '分享已撤销。' });
 	} catch (e) {
 		console.error(`Unshare Note Error (noteId: ${noteId}):`, e.message);
-		return jsonResponse({ error: 'Database error while revoking link' }, 500);
+		return jsonResponse({ error: '撤销链接时发生数据库错误' }, 500);
 	}
 }
 /**
@@ -1836,7 +1836,7 @@ async function handleUnshareNoteRequest(noteId, env) {
 async function handlePublicNoteRequest(publicId, env) {
 	const kvData = await env.NOTES_KV.get(`public_memo:${publicId}`, 'json');
 	if (!kvData || !kvData.noteId) {
-		return jsonResponse({ error: 'Shared note not found or has expired' }, 404);
+		return jsonResponse({ error: '未找到分享笔记或已过期' }, 404);
 	}
 
 	const noteId = kvData.noteId;
@@ -1844,7 +1844,7 @@ async function handlePublicNoteRequest(publicId, env) {
 	try {
 		const note = await env.DB.prepare("SELECT id, content, updated_at, files FROM notes WHERE id = ?").bind(noteId).first();
 		if (!note) {
-			return jsonResponse({ error: 'Shared note content not found' }, 404);
+			return jsonResponse({ error: '未找到分享笔记内容' }, 404);
 		}
 
 		// --- 辅助函数：将任何私有 URL 转换为公开 URL ---
@@ -1912,7 +1912,7 @@ async function handlePublicNoteRequest(publicId, env) {
 
 	} catch (e) {
 		console.error(`Public Note Error (publicId: ${publicId}):`, e.message);
-		return jsonResponse({ error: 'Database Error' }, 500);
+		return jsonResponse({ error: '数据库错误' }, 500);
 	}
 }
 
@@ -1924,20 +1924,20 @@ async function handlePublicRawNoteRequest(publicId, env) {
 	// 1. 从 KV 获取 noteId
 	const kvData = await env.NOTES_KV.get(`public_memo:${publicId}`, 'json');
 	if (!kvData || !kvData.noteId) {
-		return new Response('Not Found', { status: 404 });
+		return new Response('未找到', { status: 404 });
 	}
 
 	try {
 		// 2. 使用获取到的 noteId 从 D1 查询笔记内容
 		const note = await env.DB.prepare("SELECT content FROM notes WHERE id = ?").bind(kvData.noteId).first();
 		if (!note) {
-			return new Response('Not Found', { status: 404 });
+			return new Response('未找到', { status: 404 });
 		}
 		const headers = new Headers({ 'Content-Type': 'text/plain; charset=utf-8' });
 		return new Response(note.content, { headers });
 	} catch (e) {
 		console.error(`Public Raw Note Error (publicId: ${publicId}):`, e.message);
-		return new Response('Server Error', { status: 500 });
+		return new Response('服务器错误', { status: 500 });
 	}
 }
 
@@ -1952,7 +1952,7 @@ async function handleMergeNotes(request, env) {
 		const { sourceNoteId, targetNoteId, addSeparator } = await request.json();
 
 		if (!sourceNoteId || !targetNoteId || sourceNoteId === targetNoteId) {
-			return jsonResponse({ error: 'Invalid source or target note ID.' }, 400);
+			return jsonResponse({ error: '无效的源笔记或目标笔记 ID。' }, 400);
 		}
 
 		const [sourceNote, targetNote] = await Promise.all([
@@ -1961,7 +1961,7 @@ async function handleMergeNotes(request, env) {
 		]);
 
 		if (!sourceNote || !targetNote) {
-			return jsonResponse({ error: 'One or both notes not found.' }, 404);
+			return jsonResponse({ error: '未找到其中一个或两个笔记。' }, 404);
 		}
 
 		// 目标笔记在前，源笔记在后
@@ -2011,7 +2011,7 @@ async function handleMergeNotes(request, env) {
 
 	} catch (e) {
 		console.error("Merge Notes Error:", e.message, e.cause);
-		return jsonResponse({ error: 'Database or R2 error during merge', message: e.message }, 500);
+		return jsonResponse({ error: '合并期间发生数据库或 R2 错误', message: e.message }, 500);
 	}
 }
 
