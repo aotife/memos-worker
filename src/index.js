@@ -1445,8 +1445,18 @@ function buildTree(nodes, parentId = null) {
  */
 async function handleDocsTree(request, env) {
 	try {
-		const stmt = env.DB.prepare("SELECT id, type, title, parent_id FROM nodes ORDER BY title ASC");
-		const { results } = await stmt.all();
+		let results;
+		try {
+			const stmt = env.DB.prepare("SELECT id, type, title, parent_id, is_shared FROM nodes ORDER BY title ASC");
+			const queryResults = await stmt.all();
+			results = queryResults.results;
+		} catch (dbError) {
+			// 如果 is_shared 字段不存在（旧版本数据库），回退到基本查询
+			console.warn("is_shared column might be missing, falling back to basic query.");
+			const stmt = env.DB.prepare("SELECT id, type, title, parent_id FROM nodes ORDER BY title ASC");
+			const queryResults = await stmt.all();
+			results = queryResults.results;
+		}
 		const tree = buildTree(results, null);
 		return jsonResponse(tree);
 	} catch (e) {
@@ -1504,14 +1514,24 @@ async function handleDocsNodeCreate(request, env) {
 			title,
 			content: type === 'file' ? `# ${title}` : null,
 			parent_id,
+			is_shared: 0,
 			created_at: Date.now(),
 			updated_at: Date.now(),
 		};
 
-		const stmt = env.DB.prepare(
-			"INSERT INTO nodes (id, type, title, content, parent_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
-		);
-		await stmt.bind(...Object.values(newNode)).run();
+		try {
+			const stmt = env.DB.prepare(
+				"INSERT INTO nodes (id, type, title, content, parent_id, is_shared, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+			);
+			await stmt.bind(...Object.values(newNode)).run();
+		} catch (dbError) {
+			console.warn("Insert with is_shared failed, retrying without it:", dbError.message);
+			const { is_shared, ...oldNode } = newNode;
+			const stmt = env.DB.prepare(
+				"INSERT INTO nodes (id, type, title, content, parent_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
+			);
+			await stmt.bind(...Object.values(oldNode)).run();
+		}
 
 		return jsonResponse(newNode, 201);
 	} catch (e) {
@@ -2093,7 +2113,8 @@ async function handleShareNodeRequest(nodeId, request, env) {
 
 				await Promise.all([
 					env.NOTES_KV.put(`public_node:${publicId}`, JSON.stringify({ nodeId }), options),
-					env.NOTES_KV.put(`node_share:${nodeId}`, publicId, options)
+					env.NOTES_KV.put(`node_share:${nodeId}`, publicId, options),
+					env.DB.prepare("UPDATE nodes SET is_shared = 1 WHERE id = ?").bind(nodeId).run().catch(e => console.warn("Failed to update is_shared (maybe column missing):", e.message))
 				]);
 			}
 
@@ -2118,7 +2139,8 @@ async function handleUnshareNodeRequest(nodeId, env) {
 		if (publicId) {
 			await Promise.all([
 				env.NOTES_KV.delete(`public_node:${publicId}`),
-				env.NOTES_KV.delete(`node_share:${nodeId}`)
+				env.NOTES_KV.delete(`node_share:${nodeId}`),
+				env.DB.prepare("UPDATE nodes SET is_shared = 0 WHERE id = ?").bind(nodeId).run().catch(e => console.warn("Failed to update is_shared (maybe column missing):", e.message))
 			]);
 		}
 		return jsonResponse({ success: true, message: '分享已撤销' });
