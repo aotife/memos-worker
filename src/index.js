@@ -1231,6 +1231,7 @@ async function processNoteTags(db, noteId, content) {
 	// 1. 定义两个正则表达式：一个用于标签，一个用于 URL
 	const tagRegex = /#([\p{L}\p{N}_-]+)/gu;
 	const urlRegex = /(https?:\/\/[^\s"']*[^\s"'.?,!])/g;
+	const isHexColorLike = (value) => /^(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(value);
 
 	// 2. 将内容分割成“普通文本”和“链接文本”的交替数组
 	const segments = plainTextContent.split(urlRegex);
@@ -1241,7 +1242,9 @@ async function processNoteTags(db, noteId, content) {
 		// 4. 关键：只在【非链接】的文本片段中查找标签
 		//    我们通过重新测试来判断它是否是 URL
 		if (!/^(https?:\/\/[^\s"']*[^\s"'.?,!])/.test(segment)) {
-			const matchedInSegment = [...segment.matchAll(tagRegex)].map(match => match[1].toLowerCase());
+			const matchedInSegment = [...segment.matchAll(tagRegex)]
+				.map(match => match[1].toLowerCase())
+				.filter(tag => !isHexColorLike(tag));
 			allTags.push(...matchedInSegment);
 		}
 	});
