@@ -1220,7 +1220,14 @@ function extractImageUrls(content) {
  * 处理笔记的标签逻辑，过滤掉 URL 中的 #
  */
 async function processNoteTags(db, noteId, content) {
-	const plainTextContent = content.replace(/<[^>]*>/g, '');
+	// 先剔除代码块和行内代码，避免把代码里的 # 当成标签
+	const contentWithoutCode = content
+		.replace(/```[\s\S]*?```/g, ' ')
+		.replace(/~~~[\s\S]*?~~~/g, ' ')
+		.replace(/`[^`]*`/g, ' ')
+		.replace(/<pre\b[^>]*>[\s\S]*?<\/pre>/gi, ' ')
+		.replace(/<code\b[^>]*>[\s\S]*?<\/code>/gi, ' ');
+	const plainTextContent = contentWithoutCode.replace(/<[^>]*>/g, '');
 	// 1. 定义两个正则表达式：一个用于标签，一个用于 URL
 	const tagRegex = /#([\p{L}\p{N}_-]+)/gu;
 	const urlRegex = /(https?:\/\/[^\s"']*[^\s"'.?,!])/g;
